@@ -19,10 +19,19 @@ Prompt.prototype._run = function (cb) {
   this.done = cb
 
   var events = observe(this.rl)
-  events.normalizedUpKey.forEach(this.onUpKey.bind(this))
-  events.normalizedDownKey.forEach(this.onDownKey.bind(this))
-  events.line.forEach(this.onSubmit.bind(this))
-  events.keypress.forEach(this.onKeypress.bind(this))
+
+  var success = events.line
+    .map(function () {
+      // this.onKeypress()
+      return this.opt.choices.getChoice(this.selected)
+    }.bind(this))
+    .filter(function (choice) { return choice || this._allowOther }.bind(this))
+    .take(1)
+
+  events.normalizedUpKey.takeUntil(success).forEach(this.onUpKey.bind(this))
+  events.normalizedDownKey.takeUntil(success).forEach(this.onDownKey.bind(this))
+  events.keypress.takeUntil(success).forEach(this.onKeypress.bind(this))
+  success.forEach(this.onComplete.bind(this))
 
   cliCursor.hide()
   this.render()
@@ -66,13 +75,7 @@ Prompt.prototype.onKeypress = function (e) {
   this.render()
 }
 
-Prompt.prototype.onSubmit = function () {
-  var choice = this.opt.choices.getChoice(this.selected)
-  if (!choice && !this._allowOther) {
-    this.onKeypress()
-    return
-  }
-
+Prompt.prototype.onComplete = function (choice) {
   this._completedAnswer = choice || {
     short: this._typedAnswer,
     name: this._typedAnswer,

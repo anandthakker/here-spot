@@ -6,14 +6,19 @@ var chalk = require('chalk')
 
 module.exports = getSpotHistory
 
+// get the spot history for each availability zone in the region specified
+// in the given ec2 client's config
+// duration: ms or '1m', '8h', etc.
+// types: ['g2.2xlarge', ...]
+// callback called with (err, [{zone, current, averages}, ...])
+// where current is the latest {SpotPrice, Timestamp, etc.}, and averages is
+// [{mean: average price, start: date string, end: date string (equal to current.Timestamp), dt: duration in ms}]
 function getSpotHistory (ec2, duration, types, cb) {
   if (!util.isNumber(duration)) { duration = parseDuration(duration) }
 
   ec2.describeAvailabilityZones({}, function (err, zones) {
     if (err) { return cb(err) }
-
     zones = zones.AvailabilityZones
-
     var q = queue()
     zones.forEach(function (zone) { q.defer(zoneHistory.bind(null, zone)) })
     q.awaitAll(cb)
@@ -60,7 +65,9 @@ function summarizeHistory (zone, history) {
     var dt = h[h.length - 1].dt
     return {
       dt: dt,
-      mean: mean
+      mean: mean,
+      start: h[h.length - 1].Timestamp,
+      end: current.Timestamp
     }
   })
   .filter(Boolean)
@@ -98,6 +105,7 @@ function formatHistory (z) {
     chalk.dim('[') + priceChanges + chalk.dim(']')
 }
 
+// for convenience
 if (require.main === module) {
   var AWS = require('aws-sdk')
   getSpotHistory(new AWS.EC2({region: process.argv[2]}), process.argv[3], process.argv.slice(4), function (err, data) {
