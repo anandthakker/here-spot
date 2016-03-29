@@ -1,3 +1,5 @@
+#!/usr/bin/env node
+
 var util = require('util')
 var queue = require('queue-async')
 var parseDuration = require('parse-duration')
@@ -79,7 +81,8 @@ function summarizeHistory (zone, history) {
   return {
     zone: zone.ZoneName,
     current: current,
-    averages: averages.reverse()
+    averages: averages.reverse(),
+    history: history
   }
 }
 
@@ -107,9 +110,32 @@ function formatHistory (z) {
 
 // for convenience
 if (require.main === module) {
+  if (process.argv.length < 5) {
+    console.error('Usage: aws-spot-history REGION DURATION INSTANCE_TYPE')
+    process.exit(1)
+  }
   var AWS = require('aws-sdk')
   getSpotHistory(new AWS.EC2({region: process.argv[2]}), process.argv[3], process.argv.slice(4), function (err, data) {
     if (err) { throw err }
-    console.log(data.map(formatHistory).join('\n'))
+    var table = []
+    data.forEach(function (z) {
+      z.history.forEach(function (d) {
+        if (!table.some((t) => t.timestamp === d.Timestamp)) {
+          table.push({ timestamp: d.Timestamp })
+        }
+      })
+    })
+    table.sort((a, b) => a.timestamp > b.timestamp ? 1 : -1)
+    table.forEach(function (t, i) {
+      data.forEach(function (z) {
+        var d = z.history.find((d) => t.timestamp === d.Timestamp)
+        if (d) {
+          t[z.zone] = d.SpotPrice
+        } else if (i > 0) {
+          t[z.zone] = table[i - 1][z.zone]
+        }
+      })
+      console.log(JSON.stringify(t))
+    })
   })
 }
